@@ -1,3 +1,9 @@
+# python
 __pycache__
-email_sender_config.py
 
+# IDEs
+.vscode
+.idea
+
+# repo config
+config.py
