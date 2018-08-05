@@ -16,24 +16,28 @@ parser.add_argument('-b', help='body text')
 args = parser.parse_args()
 
 # Get vars straight
-dest_host = args.d or config.host
-subject = args.u or config.subject_text
-body = args.b or config.body_text
-env_from = args.f or config.env_from
-env_to = args.t or config.env_to
+vars = {
+    'dest host': args.d or config.host,
+    'env from': args.f or config.env_from,
+    'env to': args.t or config.env_to,
+    'subject': args.u or config.subject_text,
+    'body': args.b or config.body_text,
+}
+
+# Process aliases
+for k, v in vars.items():
+    if v in config.aliases:
+        vars[k] = config.aliases[v]
 
 # Compose email
 email = EmailMessage()
-email.set_content(body)
-email['Subject'] = subject
-email['From'] = env_from
-email['To'] = env_to
+email.set_content(vars["body"])
+email['Subject'] = vars["subject"]
+email['From'] = vars["env from"]
+email['To'] = vars["env to"]
 
 # Send email
-smtp_session = smtplib.SMTP(dest_host)
+smtp_session = smtplib.SMTP(vars["dest host"])
 smtp_session.set_debuglevel(1)
 smtp_session.send_message(email)
 smtp_session.quit()
-
-# Print summary
-print('Imagine a summary here')

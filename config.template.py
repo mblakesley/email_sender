@@ -5,3 +5,7 @@ env_from = ""
 env_to = ""
 subject_text = ""
 body_text = ""
+
+aliases = {
+    'example': 'user@domain.com'
+}
