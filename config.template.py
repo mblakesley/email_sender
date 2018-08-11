@@ -1,5 +1,6 @@
 # To use, copy to "config.py" & fill in the Python variables
 
+# Defaults
 host = ""
 env_from = ""
 env_to = ""
