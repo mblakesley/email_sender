@@ -1,10 +1,19 @@
 #!/usr/bin/python3
 
 import argparse
+import random
 import smtplib
+import string
 from email.message import EmailMessage
 
 import config
+
+
+def generate_id(length):
+    alphanum = string.digits + string.ascii_letters
+    id_list = [random.choice(alphanum) for _ in range(length)]
+    return ''.join(id_list)
+
 
 # Parse command-line args
 parser = argparse.ArgumentParser()
@@ -22,7 +31,9 @@ email_vars = {
     'env to': args.t or config.env_to,
     'subject': args.u or config.subject_text,
     'body': args.b or config.body_text,
+    'id': generate_id(5),
 }
+email_vars['subject'] += ' ' + email_vars['id']
 
 # Process aliases
 for k, v in email_vars.items():
@@ -31,13 +42,13 @@ for k, v in email_vars.items():
 
 # Compose email
 email = EmailMessage()
-email.set_content(email_vars["body"])
-email['Subject'] = email_vars["subject"]
-email['From'] = email_vars["env from"]
-email['To'] = email_vars["env to"]
+email.set_content(email_vars['body'])
+email['Subject'] = email_vars['subject']
+email['From'] = email_vars['env from']
+email['To'] = email_vars['env to']
 
 # Send email
-smtp_session = smtplib.SMTP(email_vars["dest host"])
+smtp_session = smtplib.SMTP(email_vars['dest host'])
 smtp_session.set_debuglevel(1)
 smtp_session.send_message(email)
 smtp_session.quit()
