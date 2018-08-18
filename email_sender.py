@@ -10,6 +10,7 @@ import config
 
 
 def generate_id(length):
+    """Generate alphanum ID string of specified length"""
     alphanum = string.digits + string.ascii_letters
     id_list = [random.choice(alphanum) for _ in range(length)]
     return ''.join(id_list)
@@ -33,6 +34,8 @@ email_vars = {
     'body': args.b or config.body_text,
     'id': generate_id(5),
 }
+email_vars['header from'] = email_vars['env from']
+email_vars['header to'] = email_vars['env to']
 email_vars['subject'] += ' ' + email_vars['id']
 
 # Process aliases
@@ -44,11 +47,15 @@ for k, v in email_vars.items():
 email = EmailMessage()
 email.set_content(email_vars['body'])
 email['Subject'] = email_vars['subject']
-email['From'] = email_vars['env from']
-email['To'] = email_vars['env to']
+email['From'] = email_vars['header from']
+email['To'] = email_vars['header to']
 
 # Send email
 smtp_session = smtplib.SMTP(email_vars['dest host'])
 smtp_session.set_debuglevel(1)
-smtp_session.send_message(email)
+smtp_session.send_message(
+    email,
+    from_addr=email_vars['env from'],
+    to_addrs=email_vars['env to']
+)
 smtp_session.quit()
