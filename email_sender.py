@@ -17,45 +17,43 @@ def generate_id(length):
 
 
 # Parse command-line args
+# Note: we do several things to convert the parsed args into a dict formatted to our liking:
+# (1) specify key names with `dest=`, (2) convert to dict using `vars()`, (3) remove items with "None" values
 parser = argparse.ArgumentParser()
-parser.add_argument('-d', metavar='host', help='destination IP/host')
-parser.add_argument('-f', metavar='email_address', help='envelope "from" address')
-parser.add_argument('-t', metavar='email_address', help='envelope "to" address')
-parser.add_argument('-u', metavar='string', help='subject text')
-parser.add_argument('-b', metavar='string', help='body text')
-args = parser.parse_args()
+parser.add_argument('-d', metavar='host', help='destination IP/host', dest='host')
+parser.add_argument('-f', metavar='email_address', help='envelope "from" address', dest='envelope from')
+parser.add_argument('-t', metavar='email_address', help='envelope "to" address', dest='envelope to')
+parser.add_argument('-u', metavar='string', help='subject text', dest='subject')
+parser.add_argument('-b', metavar='string', help='body text', dest='body')
+args_dict = vars(parser.parse_args())
+args_dict = {k: v for k, v in args_dict.items() if v is not None}
 
 # Get vars straight
-email_vars = {
-    'dest host': args.d or config.host,
-    'env from': args.f or config.env_from,
-    'env to': args.t or config.env_to,
-    'subject': args.u or config.subject_text,
-    'body': args.b or config.body_text,
-    'id': generate_id(5),
-}
-email_vars['header from'] = email_vars['env from']
-email_vars['header to'] = email_vars['env to']
-email_vars['subject'] += ' ' + email_vars['id']
+email_dict = config.defaults
+email_dict.update(args_dict)
+email_dict['id'] = generate_id(5)
+email_dict['header from'] = email_dict['envelope from']
+email_dict['header to'] = email_dict['envelope to']
+email_dict['subject'] += ' ' + email_dict['id']
 
 # Process aliases
-for k, v in email_vars.items():
+for k, v in email_dict.items():
     if v in config.aliases:
-        email_vars[k] = config.aliases[v]
+        email_dict[k] = config.aliases[v]
 
 # Compose email
 email = EmailMessage()
-email.set_content(email_vars['body'])
-email['Subject'] = email_vars['subject']
-email['From'] = email_vars['header from']
-email['To'] = email_vars['header to']
+email.set_content(email_dict['body'])
+email['Subject'] = email_dict['subject']
+email['From'] = email_dict['header from']
+email['To'] = email_dict['header to']
 
 # Send email
-smtp_session = smtplib.SMTP(email_vars['dest host'])
+smtp_session = smtplib.SMTP(email_dict['host'])
 smtp_session.set_debuglevel(1)
 smtp_session.send_message(
     email,
-    from_addr=email_vars['env from'],
-    to_addrs=email_vars['env to']
+    from_addr=email_dict['envelope from'],
+    to_addrs=email_dict['envelope to']
 )
 smtp_session.quit()
