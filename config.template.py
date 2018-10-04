@@ -3,7 +3,9 @@
 defaults = {
     'host': 'example.com',
     # 'envelope from': '',
+    # 'header from': '',
     # 'envelope to': '',
+    # 'header to': '',
     # 'subject': '',
     # 'body': '',
 }
