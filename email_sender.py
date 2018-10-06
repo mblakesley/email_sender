@@ -16,7 +16,10 @@ def generate_id(length):
     return ''.join(id_list)
 
 
-# Parse command-line args
+# Process config
+email_dict = config.defaults
+
+# Process command-line args
 # Note: we do several things to convert the parsed args into a dict formatted to our liking:
 # (1) specify key names with `dest=`, (2) convert to dict using `vars()`, (3) remove items with "None" values
 parser = argparse.ArgumentParser()
@@ -29,19 +32,18 @@ parser.add_argument('-u', metavar='string', help='subject text', dest='subject')
 parser.add_argument('-b', metavar='string', help='body text', dest='body')
 args_dict = vars(parser.parse_args())
 args_dict = {k: v for k, v in args_dict.items() if v is not None}
-
-# Get vars straight
-email_dict = config.defaults
 email_dict.update(args_dict)
-email_dict['id'] = generate_id(5)
-email_dict.setdefault('header from', email_dict['envelope from'])
-email_dict.setdefault('header to', email_dict['envelope to'])
-email_dict['subject'] += ' ' + email_dict['id']
 
 # Process aliases
 for k, v in email_dict.items():
     if v in config.aliases:
         email_dict[k] = config.aliases[v]
+
+# Manage vars
+email_dict.setdefault('header from', email_dict['envelope from'])
+email_dict.setdefault('header to', email_dict['envelope to'])
+email_dict['id'] = generate_id(5)
+email_dict['subject'] += ' ' + email_dict['id']
 
 # Compose email
 email = EmailMessage()
