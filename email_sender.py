@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import argparse
 import random
@@ -30,6 +30,7 @@ parser.add_argument('-t', metavar='email_address', help='envelope "to" address',
 parser.add_argument('-T', metavar='email_address', help='header "to" address', dest='header to')
 parser.add_argument('-u', metavar='string', help='subject text', dest='subject')
 parser.add_argument('-b', metavar='string', help='body text', dest='body')
+parser.add_argument('-v', action='store_true', help='enable verbose output', dest='verbosity')
 args_dict = vars(parser.parse_args())
 args_dict = {k: v for k, v in args_dict.items() if v is not None}
 email_dict.update(args_dict)
@@ -45,6 +46,16 @@ email_dict.setdefault('header to', email_dict['envelope to'])
 email_dict['id'] = generate_id(5)
 email_dict['subject'] += ' ' + email_dict['id']
 
+# Display vars
+display_order = ['host', 'envelope from', 'header from', 'envelope to', 'header to', 'subject', 'body']
+max_key_len = len(max(email_dict, key=len))
+for key in display_order:
+    if key in email_dict:
+        # some tricks here for variable width and appending ':' to the key string
+        print('{0:{1}} {2}'.format(key +':', max_key_len + 1, email_dict[key]))
+if email_dict['verbosity']:
+    print('')
+
 # Compose email
 email = EmailMessage()
 email.set_content(email_dict['body'])
@@ -54,7 +65,7 @@ email['To'] = email_dict['header to']
 
 # Send email
 smtp_session = smtplib.SMTP(email_dict['host'])
-smtp_session.set_debuglevel(1)
+smtp_session.set_debuglevel(email_dict['verbosity'])
 smtp_session.send_message(
     email,
     email_dict['envelope from'],
