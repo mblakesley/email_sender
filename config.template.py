@@ -2,6 +2,7 @@
 
 defaults = {
     'host': 'example.com',
+    # 'port': ''
     # 'envelope from': '',
     # 'header from': '',
     # 'envelope to': '',
