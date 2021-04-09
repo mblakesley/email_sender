@@ -3,17 +3,18 @@ import random
 import smtplib
 import string
 from email.message import EmailMessage
+from pprint import pprint
 
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, root_validator, validator
 
 
 class EmailData(BaseModel):
     destination: str
     port: int = 587
     envelope_from: EmailStr
-    header_from: str = ""
+    header_from: str = ''
     envelope_to: EmailStr
-    header_to: str = ""
+    header_to: str = ''
     subject: str
     body: str
     verbosity: bool = False
@@ -26,18 +27,16 @@ class EmailData(BaseModel):
         ids: list = [random.choice(alphanum) for _ in range(length)]
         return '{} {}'.format(subject, ''.join(ids))
 
-    @validator('header_from', always=True)
-    def check_header_from(cls, header_from: str, values: dict):
-        return header_from if header_from else values['envelope_from']
+    @root_validator
+    def default_headers(cls, values: dict):
+        """Default header values to envelope values if needed"""
+        if not values.get('header_from'):
+            values['header_from'] = values['envelope_from']
+        if not values.get('header_to'):
+            values['header_to'] = values['envelope_to']
+        return values
 
-    @validator('header_to', always=True)
-    def check_header_to(cls, header_to: str, values: dict):
-        return header_to if header_to else values['envelope_to']
 
-#
-# # Process config
-# email_dict = config.defaults
-#
 # # Process command-line args
 # # Note: we do several things to convert the parsed args into a dict formatted to our liking:
 # # (1) specify key names with `dest=`, (2) convert to dict using `vars()`, (3) remove items with "None" values
@@ -55,19 +54,9 @@ class EmailData(BaseModel):
 # args_dict = vars(parser.parse_args())
 # args_dict = {k: v for k, v in args_dict.items() if v is not None}
 # email_dict.update(args_dict)
-#
-# # Process aliases
-# for k, v in email_dict.items():
-#     if v in config.aliases:
-#         email_dict[k] = config.aliases[v]
 
 # Display email properties
-display_order = ['destination', 'port', 'envelope_from', 'header_from', 'envelope_to', 'header_to', 'subject', 'body']
-max_key_len = len(max(email_data.dict(), key=len))
-for key in display_order:
-    val = getattr(email_data, key, None)
-    if val:
-        print('{0:{1}} {2}'.format(key +':', max_key_len + 1, val))
+pprint(email_data.dict(exclude={'verbosity'}), sort_dicts=False)
 if email_data.verbosity:
     print('')
 
