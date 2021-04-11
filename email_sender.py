@@ -1,40 +1,13 @@
 import argparse
+import mimetypes
 import random
 import smtplib
 import string
 from email.message import EmailMessage
 from pprint import pprint
+from typing import List
 
-from pydantic import BaseModel, EmailStr, root_validator, validator
-
-
-class EmailData(BaseModel):
-    destination: str
-    port: int = 587
-    envelope_from: EmailStr
-    header_from: str = ''
-    envelope_to: EmailStr
-    header_to: str = ''
-    subject: str
-    body: str
-    verbosity: bool = False
-
-    @validator('subject')
-    def append_id(cls, subject: str) -> str:
-        """Append alphanum ID to subject"""
-        length: int = 5
-        alphanum: str = string.digits + string.ascii_letters
-        ids: list = [random.choice(alphanum) for _ in range(length)]
-        return '{} {}'.format(subject, ''.join(ids))
-
-    @root_validator
-    def default_headers(cls, values: dict):
-        """Default header values to envelope values if needed"""
-        if not values.get('header_from'):
-            values['header_from'] = values['envelope_from']
-        if not values.get('header_to'):
-            values['header_to'] = values['envelope_to']
-        return values
+from pydantic import BaseModel, EmailStr, FilePath, root_validator, validator
 
 
 # # Process command-line args
@@ -55,6 +28,51 @@ class EmailData(BaseModel):
 # args_dict = {k: v for k, v in args_dict.items() if v is not None}
 # email_dict.update(args_dict)
 
+
+class EmailData(BaseModel):
+    destination: str
+    port: int = 587
+    envelope_from: EmailStr
+    header_from: str = ''
+    # TODO: list of to's
+    envelope_to: EmailStr
+    header_to: str = ''
+    # TODO: cc/bcc (header versions? get added to to's?)
+    # TODO: headers
+    subject: str
+    body: str
+    # TODO: properly handle '~'
+    attachments: List[FilePath]
+    verbosity: bool = False
+
+    @root_validator
+    def default_headers(cls, values: dict):
+        """Default header values to envelope values if needed"""
+        if not values.get('header_from'):
+            values['header_from'] = values['envelope_from']
+        if not values.get('header_to'):
+            values['header_to'] = values['envelope_to']
+        return values
+
+    @validator('subject')
+    def append_id(cls, subject: str) -> str:
+        """Append alphanum ID to subject"""
+        length: int = 5
+        alphanum: str = string.digits + string.ascii_letters
+        ids: list = [random.choice(alphanum) for _ in range(length)]
+        return '{} {}'.format(subject, ''.join(ids))
+
+
+email_data: EmailData = EmailData(
+    destination='',
+    envelope_from='',
+    envelope_to='',
+    subject='',
+    body='',
+    attachments=[],
+    verbosity=True,
+)
+
 # Display email properties
 pprint(email_data.dict(exclude={'verbosity'}), sort_dicts=False)
 if email_data.verbosity:
@@ -66,6 +84,18 @@ email.set_content(email_data.body)
 email['Subject'] = email_data.subject
 email['From'] = email_data.header_from
 email['To'] = email_data.header_to
+
+# TODO: move to data model
+# process attachments
+for path in email_data.attachments:
+    # "encoding" is only used to help determine content type
+    ctype, encoding = mimetypes.guess_type(str(path))
+    if ctype is None or encoding is not None:
+        # No guess or file is encoded (compressed), so use a generic "bag-of-bits" type
+        ctype = 'application/octet-stream'
+    maintype, subtype = ctype.split('/', 1)
+    with open(str(path), 'rb') as file:
+        email.add_attachment(file.read(), maintype=maintype, subtype=subtype, filename=path.name)
 
 # Send email
 smtp_session = smtplib.SMTP(host=email_data.destination, port=email_data.port)
