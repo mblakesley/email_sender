@@ -10,39 +10,34 @@ from typing import List
 from pydantic import BaseModel, EmailStr, FilePath, root_validator, validator
 
 
-# # Process command-line args
-# # Note: we do several things to convert the parsed args into a dict formatted to our liking:
-# # (1) specify key names with `dest=`, (2) convert to dict using `vars()`, (3) remove items with "None" values
-# parser = argparse.ArgumentParser()
-# parser.add_argument('-d', metavar='dest-host', help='destination IP/host', dest='host')
-# parser.add_argument('-p', type=int, metavar='dest-port', help='destination port', dest='port')
-# parser.add_argument('-f', metavar='envelope-from', help='envelope "from" address', dest='envelope from')
+parser = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
+parser.add_argument('-d', metavar='dest-host', help='destination IP/host', dest='destination')
+parser.add_argument('-p', type=int, metavar='dest-port', help='destination port', dest='port')
+parser.add_argument('-f', metavar='envelope-from', help='envelope "from" address', dest='envelope_from')
 # parser.add_argument('-F', metavar='header-from', help='header "from" address', dest='header from')
-# parser.add_argument('-t', metavar='envelope-to', help='envelope "to" address', dest='envelope to')
+parser.add_argument('-t', metavar='envelope-to', help='envelope "to" address', dest='envelope_to')
 # parser.add_argument('-T', metavar='header-to', help='header "to" address', dest='header to')
-# parser.add_argument('-u', metavar='subject', help='subject text', dest='subject')
-# parser.add_argument('-b', metavar='body', help='body text', dest='body')
-# # TODO: update this to match smtplib debug levels
-# parser.add_argument('-v', action='store_true', help='enable verbose output', dest='verbosity')
-# args_dict = vars(parser.parse_args())
-# args_dict = {k: v for k, v in args_dict.items() if v is not None}
-# email_dict.update(args_dict)
+parser.add_argument('-u', metavar='subject', help='subject text', dest='subject')
+parser.add_argument('-b', metavar='body', help='body text', dest='body')
+# TODO: attachments arg
+# TODO: update this to match smtplib debug levels
+parser.add_argument('-v', action='store_true', help='enable verbose output', dest='verbosity')
 
 
 class EmailData(BaseModel):
     destination: str
     port: int = 587
-    envelope_from: EmailStr
+    envelope_from: str = ''  # can be illegit if you want
     header_from: str = ''
-    # TODO: list of to's
+    # TODO: list of to's - need to come in as comma-separated strings
     envelope_to: EmailStr
     header_to: str = ''
     # TODO: cc/bcc (header versions? get added to to's?)
     # TODO: headers
-    subject: str
-    body: str
+    subject: str = ''
+    body: str = ''
     # TODO: properly handle '~'
-    attachments: List[FilePath]
+    attachments: List[FilePath] = []
     verbosity: bool = False
 
     @root_validator
@@ -63,15 +58,7 @@ class EmailData(BaseModel):
         return '{} {}'.format(subject, ''.join(ids))
 
 
-email_data: EmailData = EmailData(
-    destination='',
-    envelope_from='',
-    envelope_to='',
-    subject='',
-    body='',
-    attachments=[],
-    verbosity=True,
-)
+email_data: EmailData = EmailData(**vars(parser.parse_args()))
 
 # Display email properties
 pprint(email_data.dict(exclude={'verbosity'}), sort_dicts=False)
