@@ -25,8 +25,8 @@ def parse_args() -> dict:
     parser.add_argument('-p', type=int, metavar='dest-port', help='destination port', dest='port')
     parser.add_argument('-f', metavar='envelope-from', help='envelope "from" address', dest='envelope_from')
     parser.add_argument('-F', metavar='header-from', help='header "from" address', dest='header_from')
-    parser.add_argument('-t', metavar='envelope-to', help='envelope "to" address', dest='envelope_to')
-    parser.add_argument('-T', metavar='header-to', help='header "to" address', dest='header_to')
+    parser.add_argument('-t', metavar='envelope-to', help='envelope "to" addresses (comma-separated)', dest='envelope_to')
+    parser.add_argument('-T', metavar='header-to', help='header "to" addresses (comma-separated)', dest='header_to')
     parser.add_argument('-s', metavar='subject', help='subject text', dest='subject')
     parser.add_argument('-b', metavar='body', help='body text', dest='body')
     parser.add_argument('-a', metavar='attach', help='attachments (absolute path)', dest='attachments')
@@ -43,9 +43,8 @@ class EmailData(BaseModel):
     # avoiding EmailStr for envelope info because we want the ability to test weird vals
     envelope_from: Optional[str] = None
     header_from: Optional[str] = None
-    # TODO: list of to's - need to come in as comma-separated strings
-    envelope_to: Optional[str] = None
-    header_to: Optional[str] = None
+    envelope_to: Optional[List[str]] = None
+    header_to: Optional[List[str]] = None
     # TODO: cc/bcc (header versions? get added to to's?)
     # TODO: headers
     subject: str
@@ -53,7 +52,7 @@ class EmailData(BaseModel):
     # TODO: properly handle '~'
     attachments: List[FilePath] = []
 
-    @validator('attachments', pre=True)
+    @validator('envelope_to', 'header_to', 'attachments', pre=True)
     def str_to_list(cls, var: str) -> List[str]:
         return [s.strip() for s in var.split(',')]
 
@@ -67,15 +66,19 @@ class EmailData(BaseModel):
 
     @root_validator
     def manage_froms_tos(cls, vals: dict):
-        if vals.get("envelope_from") is None:
-            assert vals.get("header_from") is not None, \
+        if vals.get('envelope_from') is None:
+            assert vals.get('header_from') is not None, \
                 'either "envelope from" or "header from" must be provided'
-            vals["envelope_from"] = vals["header_from"].split('<')[-1].strip('>')
-        if vals.get("envelope_to") is None:
-            assert vals.get("header_to") is not None, \
-                'either "envelope to" or "header to" must be provided'
-            vals["envelope_to"] = vals["header_to"].split('<')[-1].strip('>')
+            vals['envelope_from'] = cls._parse_addr(vals['header_from'])
+        if vals.get('envelope_to') is None:
+            assert vals.get('header_to') is not None, \
+                'minimally, either "envelope to" or "header to" must be provided'
+            vals['envelope_to'] = [cls._parse_addr(hdr_to) for hdr_to in vals['header_to']]
         return vals
+
+    @staticmethod
+    def _parse_addr(header: str) -> str:
+        return header.split('<')[-1].strip('>')
 
 
 def compose_email(email_data: EmailData) -> EmailMessage:
@@ -85,7 +88,7 @@ def compose_email(email_data: EmailData) -> EmailMessage:
     if email_data.header_from is not None:
         email['From'] = email_data.header_from
     if email_data.header_to is not None:
-        email['To'] = email_data.header_to
+        email['To'] = ', '.join(email_data.header_to)
 
     # process attachments
     for path in email_data.attachments:
@@ -110,12 +113,12 @@ def send_email(email: EmailMessage, email_data: EmailData, verbosity: bool) -> N
         smtp_session.send_message(
             msg=email,
             from_addr=email_data.envelope_from,
-            to_addrs=email_data.envelope_to.split(','),
+            to_addrs=email_data.envelope_to,
         )
     except:
         pass
     smtp_session.quit()
-    # TODO: display error after quitting
+    # TODO: on error, fail gracefully but report error to user!
 
 
 main()
