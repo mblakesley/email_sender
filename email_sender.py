@@ -5,24 +5,25 @@ import smtplib
 import string
 from email.message import EmailMessage
 from pprint import pprint
-from typing import List, Optional
+from typing import Optional
 
-from pydantic import BaseModel, FilePath, validator, root_validator
+from pydantic import BaseModel, EmailStr, FilePath, validator, root_validator
 
 
 def main() -> None:
     arg_data: dict = parse_args()
     email_data: EmailData = EmailData(**arg_data)
-    pprint(email_data.dict(), sort_dicts=False)
-    email: EmailMessage = compose_email(email_data)
+    pprint(email_data.dict(exclude_none=True), sort_dicts=False)
+    email: EmailMessage = compose_email_obj(email_data)
     # email_data includes envelope data
-    send_email(email, email_data, arg_data["verbosity"])
+    send_email(email, email_data)
 
 
 def parse_args() -> dict:
     parser = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
-    parser.add_argument('-d', metavar='dest-host', help='destination IP/host', dest='destination')
-    parser.add_argument('-p', type=int, metavar='dest-port', help='destination port', dest='port')
+    # TODO: mandatory args should be indicated in "-h" prompt
+    parser.add_argument('-d', metavar='destination', help='destination IP/host', dest='destination')
+    parser.add_argument('-p', type=int, metavar='port', help='port', dest='port')
     parser.add_argument('-f', metavar='envelope-from', help='envelope "from" address', dest='envelope_from')
     parser.add_argument('-F', metavar='header-from', help='header "from" address', dest='header_from')
     parser.add_argument('-t', metavar='envelope-to', help='envelope "to" addresses (comma-separated)', dest='envelope_to')
@@ -41,19 +42,20 @@ class EmailData(BaseModel):
     destination: str
     port: int = 587
     # avoiding EmailStr for envelope info because we want the ability to test weird vals
-    envelope_from: Optional[str] = None
-    header_from: Optional[str] = None
-    envelope_to: Optional[List[str]] = None
-    header_to: Optional[List[str]] = None
-    # TODO: cc/bcc (header versions? get added to to's?)
+    envelope_from: Optional[str]
+    header_from: Optional[str]
+    envelope_to: Optional[list[str]]
+    header_to: Optional[list[str]]
     # TODO: headers
     subject: str
+    # TODO: html and/or plaintext content
     body: str
     # TODO: properly handle '~'
-    attachments: List[FilePath] = []
+    attachments: list[FilePath] = []
+    verbosity: bool
 
     @validator('envelope_to', 'header_to', 'attachments', pre=True)
-    def str_to_list(cls, var: str) -> List[str]:
+    def str_to_list(cls, var: str) -> list[str]:
         return [s.strip() for s in var.split(',')]
 
     @validator('subject')
@@ -66,9 +68,12 @@ class EmailData(BaseModel):
 
     @root_validator
     def manage_froms_tos(cls, vals: dict):
+        # smtplib can do most of this, but we do it all ourselves for output clarity
         if vals.get('envelope_from') is None:
             assert vals.get('header_from') is not None, \
                 'either "envelope from" or "header from" must be provided'
+            # this script treats header from's/to's as the source of truth,
+            # since they can accept either low- or high-level formats
             vals['envelope_from'] = cls._parse_addr(vals['header_from'])
         if vals.get('envelope_to') is None:
             assert vals.get('header_to') is not None, \
@@ -81,7 +86,7 @@ class EmailData(BaseModel):
         return header.split('<')[-1].strip('>')
 
 
-def compose_email(email_data: EmailData) -> EmailMessage:
+def compose_email_obj(email_data: EmailData) -> EmailMessage:
     email: EmailMessage = EmailMessage()
     email.set_content(email_data.body)
     email['Subject'] = email_data.subject
@@ -99,15 +104,17 @@ def compose_email(email_data: EmailData) -> EmailMessage:
             ctype = 'application/octet-stream'
         maintype, subtype = ctype.split('/', 1)
         with open(str(path), 'rb') as file:
-            email.add_attachment(file.read(), maintype=maintype, subtype=subtype, filename=path.name)
+            email.add_attachment(
+                file.read(), maintype=maintype, subtype=subtype, filename=path.name
+            )
 
     return email
 
 
-def send_email(email: EmailMessage, email_data: EmailData, verbosity: bool) -> None:
+def send_email(email: EmailMessage, email_data: EmailData) -> None:
     smtp_session = smtplib.SMTP(host=email_data.destination, port=email_data.port)
-    smtp_session.set_debuglevel(verbosity)
-    if verbosity:
+    smtp_session.set_debuglevel(email_data.verbosity)
+    if email_data.verbosity:
         print('')
     try:
         smtp_session.send_message(
@@ -118,7 +125,7 @@ def send_email(email: EmailMessage, email_data: EmailData, verbosity: bool) -> N
     except:
         pass
     smtp_session.quit()
-    # TODO: on error, fail gracefully but report error to user!
+    # TODO: on error, fail gracefully AND REPORT ERROR TO USER!
 
 
 main()
