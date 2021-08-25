@@ -13,7 +13,7 @@ from pydantic import BaseModel, EmailStr, FilePath, validator, root_validator
 def main() -> None:
     arg_data: dict = parse_args()
     email_data: EmailData = EmailData(**arg_data)
-    pprint(email_data.dict(exclude_none=True), sort_dicts=False)
+    pprint(email_data.dict(exclude_none=True, exclude={"verbosity"}), sort_dicts=False)
     email: EmailMessage = compose_email_obj(email_data)
     # email_data includes envelope data
     send_email(email, email_data)
@@ -28,6 +28,8 @@ def parse_args() -> dict:
     parser.add_argument('-F', metavar='header-from', help='header "from" address', dest='header_from')
     parser.add_argument('-t', metavar='envelope-to', help='envelope "to" addresses (comma-separated)', dest='envelope_to')
     parser.add_argument('-T', metavar='header-to', help='header "to" addresses (comma-separated)', dest='header_to')
+    parser.add_argument('-C', metavar='cc', help='header CC addresses (comma-separated)', dest='header_cc')
+    parser.add_argument('-B', metavar='bcc', help='BCC addresses (comma-separated)', dest='bcc')
     parser.add_argument('-s', metavar='subject', help='subject text', dest='subject')
     parser.add_argument('-b', metavar='body', help='body text', dest='body')
     parser.add_argument('-a', metavar='attach', help='attachments (absolute path)', dest='attachments')
@@ -44,9 +46,12 @@ class EmailData(BaseModel):
     # avoiding EmailStr for envelope info because we want the ability to test weird vals
     envelope_from: Optional[str]
     header_from: Optional[str]
-    envelope_to: Optional[list[str]]
-    header_to: Optional[list[str]]
+    envelope_to: list[str] = []
+    header_to: list[str] = []
+    header_cc: list[str] = []
+    bcc: list[EmailStr] = []
     # TODO: headers
+    # TODO: auto-add date & message ID headers
     subject: str
     # TODO: html and/or plaintext content
     body: str
@@ -54,7 +59,7 @@ class EmailData(BaseModel):
     attachments: list[FilePath] = []
     verbosity: bool
 
-    @validator('envelope_to', 'header_to', 'attachments', pre=True)
+    @validator('envelope_to', 'header_to', 'header_cc', 'bcc', 'attachments', pre=True)
     def str_to_list(cls, var: str) -> list[str]:
         return [s.strip() for s in var.split(',')]
 
@@ -75,10 +80,12 @@ class EmailData(BaseModel):
             # this script treats header from's/to's as the source of truth,
             # since they can accept either low- or high-level formats
             vals['envelope_from'] = cls._parse_addr(vals['header_from'])
-        if vals.get('envelope_to') is None:
-            assert vals.get('header_to') is not None, \
+        if not vals.get('envelope_to'):
+            assert vals.get('header_to'), \
                 'minimally, either "envelope to" or "header to" must be provided'
-            vals['envelope_to'] = [cls._parse_addr(hdr_to) for hdr_to in vals['header_to']]
+            # design decision: show cc's as both cc's AND env to's (keep bcc separate)
+            hdr_rcpts: list[str] = vals.get('header_to') + vals.get('header_cc')
+            vals['envelope_to'] = [cls._parse_addr(hdr_rcpt) for hdr_rcpt in hdr_rcpts]
         return vals
 
     @staticmethod
@@ -92,8 +99,10 @@ def compose_email_obj(email_data: EmailData) -> EmailMessage:
     email['Subject'] = email_data.subject
     if email_data.header_from is not None:
         email['From'] = email_data.header_from
-    if email_data.header_to is not None:
+    if email_data.header_to:
         email['To'] = ', '.join(email_data.header_to)
+    if email_data.header_cc:
+        email['Cc'] = ', '.join(email_data.header_cc)
 
     # process attachments
     for path in email_data.attachments:
@@ -120,12 +129,10 @@ def send_email(email: EmailMessage, email_data: EmailData) -> None:
         smtp_session.send_message(
             msg=email,
             from_addr=email_data.envelope_from,
-            to_addrs=email_data.envelope_to,
+            to_addrs=email_data.envelope_to + email_data.bcc,
         )
-    except:
-        pass
-    smtp_session.quit()
     # TODO: on error, fail gracefully AND REPORT ERROR TO USER!
-
+    finally:
+        smtp_session.quit()
 
 main()
