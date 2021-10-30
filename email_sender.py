@@ -4,6 +4,7 @@ import random
 import smtplib
 import string
 from email.message import EmailMessage
+from email.utils import make_msgid
 from pprint import pprint
 from typing import Optional
 
@@ -13,7 +14,7 @@ from pydantic import BaseModel, EmailStr, FilePath, validator, root_validator
 def main() -> None:
     arg_data: dict = parse_args()
     email_data: EmailData = EmailData(**arg_data)
-    pprint(email_data.dict(exclude_none=True, exclude={"verbosity"}), sort_dicts=False)
+    print_overview(email_data)
     email: EmailMessage = compose_email_obj(email_data)
     # email_data includes envelope data
     send_email(email, email_data)
@@ -51,11 +52,11 @@ class EmailData(BaseModel):
     header_cc: list[str] = []
     bcc: list[EmailStr] = []
     # TODO: headers
-    # TODO: auto-add date & message ID headers
+    # TODO: auto-add date headers
     subject: str
     # TODO: html and/or plaintext content
     body: str
-    # TODO: properly handle '~'
+    # TODO: handle '~' when not interpolated by shell
     attachments: list[FilePath] = []
     verbosity: bool
 
@@ -73,18 +74,17 @@ class EmailData(BaseModel):
 
     @root_validator
     def manage_froms_tos(cls, vals: dict):
-        # smtplib can do most of this, but we do it all ourselves for output clarity
-        if vals.get('envelope_from') is None:
-            assert vals.get('header_from') is not None, \
+        # smtplib can do most of the from/to stuff, but we do it here for output clarity
+        # also note that this script treats header from/to/etc as the source of truth
+        if vals['envelope_from'] is None:
+            assert vals['header_from'] is not None, \
                 'either "envelope from" or "header from" must be provided'
-            # this script treats header from's/to's as the source of truth,
-            # since they can accept either low- or high-level formats
+            # probably want to make this optional at some point
             vals['envelope_from'] = cls._parse_addr(vals['header_from'])
-        if not vals.get('envelope_to'):
-            assert vals.get('header_to'), \
-                'minimally, either "envelope to" or "header to" must be provided'
-            # design decision: show cc's as both cc's AND env to's (keep bcc separate)
-            hdr_rcpts: list[str] = vals.get('header_to') + vals.get('header_cc')
+        if not vals['envelope_to']:
+            assert vals['header_to'], \
+                'either "envelope to" or "header to" must be provided'
+            hdr_rcpts: list[str] = vals['header_to'] + vals['header_cc']
             vals['envelope_to'] = [cls._parse_addr(hdr_rcpt) for hdr_rcpt in hdr_rcpts]
         return vals
 
@@ -93,16 +93,22 @@ class EmailData(BaseModel):
         return header.split('<')[-1].strip('>')
 
 
+def print_overview(email_data: EmailData) -> None:
+    data_with_gaps: dict = email_data.dict(exclude={"verbosity"})
+    pprint({k: v for k, v in data_with_gaps.items() if v}, sort_dicts=False)
+
+
 def compose_email_obj(email_data: EmailData) -> EmailMessage:
     email: EmailMessage = EmailMessage()
-    email.set_content(email_data.body)
-    email['Subject'] = email_data.subject
     if email_data.header_from is not None:
         email['From'] = email_data.header_from
+        email['Message-ID'] = make_msgid(domain=email_data.header_from.split('@')[-1])
     if email_data.header_to:
         email['To'] = ', '.join(email_data.header_to)
     if email_data.header_cc:
         email['Cc'] = ', '.join(email_data.header_cc)
+    email['Subject'] = email_data.subject
+    email.set_content(email_data.body)
 
     # process attachments
     for path in email_data.attachments:
